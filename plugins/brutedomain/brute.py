@@ -3,6 +3,8 @@
 import os
 import time
 import dns.resolver
+import Queue
+import threading
 
 def generate_domain(start_domain = ""):
     '''
@@ -20,10 +22,86 @@ def generate_domain(start_domain = ""):
     #         domain = j + '.' + i + '.' + start_domain
     #         domain_list.append(domain)
 
-
     domain_list = domain_list[::-1]
     return domain_list
 
+
+domains_queue = Queue.Queue()
+info_queue = Queue.Queue()
+
+def server(start_domain):
+    global domains_queue
+    for i in generate_domain(start_domain):
+        domains_queue.put(i)
+    print 'start!!'
+
+    threads = []
+
+    for i in xrange(10):
+        thread = threading.Thread(target = brute_work)
+        threads.append(thread)
+
+    thread = threading.Thread(target = print_work)
+    threads.append(thread)
+
+    for i in threads:
+        i.setDaemon(True)
+        i.start()
+
+    while True:
+        pass
+
+
+def brute_work():
+    global domains_queue
+    global info_queue
+
+    res = dns.resolver.Resolver()
+    res.nameservers = ['119.29.29.29','180.76.76.76','182.254.116.116','114.114.114.114','114.114.115.115']
+
+    while True:
+        if domains_queue.qsize() > 0:
+            domain = domains_queue.get()
+            ip_list = []
+            try:
+                for i in res.query(domain).response.answer:
+                    for item in i.items:
+                        item = str(item)
+                        if not item.endswith('.'):
+                            ip_list.append(item)
+                    ip_list = sorted(ip_list)
+            except Exception as e:
+                pass
+            if ip_list == []:
+                continue
+            ip_str = str(ip_list)
+            info = (domain,ip_str)
+            info_queue.put(info)
+        else:
+            time.sleep(1)
+
+
+
+
+def print_work():
+    global info_queue
+    info_dict = {}
+    while True:
+        if info_queue.qsize() > 0:
+            info = info_queue.get()
+            domain,ip_str = info
+
+            if ip_str in info_dict:
+                info_dict[ip_str].add(domain)
+            else:
+                info_dict[ip_str] = set()
+                info_dict[ip_str].add(domain)
+
+            if len(info_dict[ip_str]) < 2:
+                print ip_str,info_dict[ip_str]
+
+        else:
+            time.sleep(1)
 
 
 def brute_domain(start_domain = ""):
@@ -54,6 +132,7 @@ def brute_domain(start_domain = ""):
             info_dict[ip_str].add(url)
         if len(info_dict[ip_str]) < 2:
             print ip_str,info_dict[ip_str]
+
 
 
 def single_test():
@@ -90,5 +169,11 @@ def main():
 
 
 if __name__ == '__main__':
-    brute_domain("suning.com")
+    try:
+        server("suning.com")
+    except KeyboardInterrupt:
+        print "User Press Ctrl+C,Exit"
+    except EOFError:
+        print "User Press Ctrl+D,Exit"
+
     # single_test()
